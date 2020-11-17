@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template
 import os
 import random
-import irisnative
+import redis
 import socket
 import sys
 
@@ -31,19 +31,13 @@ redis_server = os.environ['REDIS']
 # Redis Connection
 try:
     if "REDIS_PWD" in os.environ:
-        connection = irisnative.createConnection(hostname=redis_server,
-                        port=1972,
-                        namespace='USER',
-                        username='_SYSTEM',
-                        password=os.environ['IRIS_PWD'])
+        r = redis.StrictRedis(host=redis_server,
+                        port=6379,
+                        password=os.environ['REDIS_PWD'])
     else:
-        connection = irisnative.createConnection(hostname=redis_server,
-                        port=1972,
-                        namespace='USER',
-                        username='_SYSTEM',
-                        password='SYS')
-    r = irisnative.createIris(connection)
-except:
+        r = redis.Redis(redis_server)
+    r.ping()
+except redis.ConnectionError:
     exit('Failed to connect to Redis, terminating.')
 
 # Change title to host name to demo NLB
@@ -51,8 +45,8 @@ if app.config['SHOWHOST'] == "true":
     title = socket.gethostname()
 
 # Init Redis
-if not r.get(button1): r.set(0,button1)
-if not r.get(button2): r.set(0,button2)
+if not r.get(button1): r.set(button1,0)
+if not r.get(button2): r.set(button2,0)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -60,8 +54,8 @@ def index():
     if request.method == 'GET':
 
         # Get current values
-        vote1 = r.get(button1)
-        vote2 = r.get(button2)        
+        vote1 = r.get(button1).decode('utf-8')
+        vote2 = r.get(button2).decode('utf-8')            
 
         # Return index with values
         return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
@@ -71,21 +65,21 @@ def index():
         if request.form['vote'] == 'reset':
             
             # Empty table and return results
-            r.set(0,button1)
-            r.set(0,button2)
-            vote1 = r.get(button1)
-            vote2 = r.get(button2)
+            r.set(button1,0)
+            r.set(button2,0)
+            vote1 = r.get(button1).decode('utf-8')
+            vote2 = r.get(button2).decode('utf-8')
             return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
         
         else:
 
             # Insert vote result into DB
             vote = request.form['vote']
-            r.increment(1,vote)
+            r.incr(vote,1)
             
             # Get current values
-            vote1 = r.get(button1)
-            vote2 = r.get(button2)  
+            vote1 = r.get(button1).decode('utf-8')
+            vote2 = r.get(button2).decode('utf-8')  
                 
             # Return results
             return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
